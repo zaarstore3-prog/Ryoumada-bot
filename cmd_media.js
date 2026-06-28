@@ -105,29 +105,32 @@ export async function handleMedia(sock, msg, from, sender, cmd, args, prefix) {
             break;
         }
 
-        case 'play': {
+         case 'play': {
             if (!args[0]) return sock.sendMessage(from, { text: `❌ Format: ${prefix}play [Judul Lagu]` });
             let query = args.join(" ");
-            await sock.sendMessage(from, { text: `⏳ *Mencari:* ${query}...` });
-
-            let searchJson = await fetch(`https://api.vreden.web.id/api/ytsearch?query=${encodeURIComponent(query)}`).then(r=>r.json()).catch(()=>null);
-            if (!searchJson || !searchJson.result) return sock.sendMessage(from, { text: `❌ *Lagu tidak ditemukan.*` });
+            await sock.sendMessage(from, { text: `🔍 *Sedang mencari:* ${query}...` }, { quoted: msg });
             
-            let videoUrl = searchJson.result[0].url;
-            let title = searchJson.result[0].title;
-            let thumb = searchJson.result[0].thumbnail;
-
-            let txt = `🎵 *RYOUMADA PLAY* 🎵\n\n📌 *Judul:* ${title}\n⏳ _Mengunduh Audio..._`;
-            if (thumb) await sock.sendMessage(from, { image: await fetchMediaBuffer(thumb), caption: txt });
-
-            let audioUrl = await fetchDownloadUrl('ytmp3', videoUrl);
-            if (!audioUrl) return sock.sendMessage(from, { text: `❌ *Gagal mengunduh audio.* Server sedang down.` });
-
             try {
-                let audioBuff = await fetchMediaBuffer(audioUrl);
-                await sock.sendMessage(from, { audio: audioBuff, mimetype: 'audio/mpeg', ptt: false });
-            } catch(e) {
-                sock.sendMessage(from, { text: `❌ *Gagal mengirim file audio ke WA.*` });
+                // Mencari lagu
+                let searchRes = await fetch(`https://api.ryzendesu.vip/api/search/ytsearch?query=${encodeURIComponent(query)}`);
+                let searchJson = await searchRes.json();
+                
+                if (!searchJson || searchJson.length === 0) return sock.sendMessage(from, { text: `❌ Lagu tidak ditemukan.` });
+                let videoUrl = searchJson[0].url;
+                
+                // Mendownload Audio dari hasil pencarian
+                let dlRes = await fetch(`https://api.ryzendesu.vip/api/downloader/ytmp3?url=${encodeURIComponent(videoUrl)}`);
+                let dlJson = await dlRes.json();
+                
+                if (!dlJson || !dlJson.url) return sock.sendMessage(from, { text: `❌ Gagal memutar lagu.` });
+                
+                let caption = `🎵 *RYOUMADA MUSIC PLAY*\n\n📌 *Judul:* ${searchJson[0].title}\n⏱️ *Durasi:* ${searchJson[0].timestamp}\n\n_Sedang mengirim audio..._`;
+                await sock.sendMessage(from, { image: { url: searchJson[0].thumbnail }, caption: caption }, { quoted: msg });
+                await sock.sendMessage(from, { audio: { url: dlJson.url }, mimetype: 'audio/mp4' }, { quoted: msg });
+                
+            } catch (err) {
+                console.error("Error Play:", err);
+                sock.sendMessage(from, { text: `❌ Fitur Play sedang mengalami gangguan.` });
             }
             break;
         }
@@ -191,39 +194,31 @@ export async function handleMedia(sock, msg, from, sender, cmd, args, prefix) {
             break;
         }
 
-        case 'fb': case 'facebook': case 'fb_sd': case 'fb_hd': {
-            if(!args[0]) return sock.sendMessage(from, {text: `❌ Format: ${prefix}fb [Link FB]`});
-            if (cmd === 'fb' || cmd === 'facebook') {
-                return sock.sendMessage(from, {text: `🟦 *FACEBOOK DOWNLOADER* 🟦\nPilih kualitas:\n1️⃣ Normal (SD)\n2️⃣ Tinggi (HD)\n\n_Balas dengan angka 1 atau 2_\n\n(URL_A: ${args[0]})`});
+        case 'fb': case 'facebook': {
+            if (!args[0]) return sock.sendMessage(from, { text: `❌ Format: ${prefix}fb [URL Facebook]` });
+            await sock.sendMessage(from, { text: `⏳ *Memproses tautan Facebook...*` }, { quoted: msg });
+            
+            try {
+                let res = await fetch(`https://api.ryzendesu.vip/api/downloader/fbdl?url=${encodeURIComponent(args[0])}`);
+                let json = await res.json();
+                
+                if (!json || !json.data || json.data.length === 0) return sock.sendMessage(from, { text: `❌ Gagal mengekstrak video Facebook. Pastikan privasi video publik.` });
+                
+                let hdVideo = json.data.find(v => v.resolution === 'HD') || json.data[0];
+                await sock.sendMessage(from, { video: { url: hdVideo.url }, caption: `🟦 *FACEBOOK DOWNLOADER*\n\n✅ Berhasil diunduh.` }, { quoted: msg });
+            } catch (err) {
+                console.error("Error FB:", err);
+                sock.sendMessage(from, { text: `❌ Server Facebook Downloader sibuk.` });
             }
-            await sock.sendMessage(from, { text: "⏳ *Mengambil video dari Facebook...*" });
-            
-            let vidUrl = await fetchDownloadUrl('fb', args[0]);
-            if (!vidUrl) return sock.sendMessage(from, { text: "❌ *Link video FB tidak ditemukan di server.*" });
-
-            try {
-                let buff = await fetchMediaBuffer(vidUrl);
-                await sock.sendMessage(from, { video: buff, caption: "🟦 *FACEBOOK VIDEO*", mimetype: 'video/mp4' });
-            } catch(e) { sock.sendMessage(from, { text: "❌ *Gagal mengirim video FB (Ukuran melebihi batas).* " }); }
             break;
         }
 
-        case 'ig': case 'instagram': {
-            if (!args[0]) return sock.sendMessage(from, { text: `❌ Format: ${prefix}${cmd} [URL Instagram]` });
-            let txt = `📸 *INSTAGRAM DOWNLOADER* 📸\n\nPilih jenis unduhan:\n[ 1 ] Video / Reels\n[ 2 ] Foto / Slide\n\n_Balas pesan ini dengan angka 1 atau 2_\n\n(URL_A: ${args[0]})`;
-            await sock.sendMessage(from, { text: txt });
-            break;
-        }
-
-        case 'ig_video': case 'ig_slide': {
-            let url = args[0];
-            if (!url) return sock.sendMessage(from, { text: `❌ URL Instagram tidak ditemukan.` });
-            
-            await sock.sendMessage(from, { text: `⏳ *Memproses tautan Instagram...*` });
+         case 'ig': case 'instagram': {
+            if (!args[0]) return sock.sendMessage(from, { text: `❌ Format: ${prefix}${cmd} [URL Instagram]` }, { quoted: msg });
+            await sock.sendMessage(from, { text: `⏳ *Memproses tautan Instagram...*` }, { quoted: msg });
             
             try {
-                // Menggunakan API Downloader IG Publik Terpercaya (Ryzendesu)
-                let res = await fetch(`https://api.ryzendesu.vip/api/downloader/igdl?url=${encodeURIComponent(url)}`);
+                let res = await fetch(`https://api.ryzendesu.vip/api/downloader/igdl?url=${encodeURIComponent(args[0])}`);
                 let json = await res.json();
                 
                 if (!json || !json.data || json.data.length === 0) {
@@ -231,20 +226,17 @@ export async function handleMedia(sock, msg, from, sender, cmd, args, prefix) {
                 }
 
                 for (let item of json.data) {
-                    let mediaUrl = item.url;
-                    if (!mediaUrl) continue;
-
-                    if (cmd === 'ig_video') {
-                        await sock.sendMessage(from, { video: { url: mediaUrl }, caption: `✅ *Berhasil mengunduh Video IG*` });
+                    if (item.url.includes('.mp4')) {
+                        await sock.sendMessage(from, { video: { url: item.url }, caption: `📸 *INSTAGRAM VIDEO*\n\n✅ Berhasil diunduh.` }, { quoted: msg });
                     } else {
-                        await sock.sendMessage(from, { image: { url: mediaUrl }, caption: `✅ *Berhasil mengunduh Slide IG*` });
+                        await sock.sendMessage(from, { image: { url: item.url }, caption: `📸 *INSTAGRAM FOTO*\n\n✅ Berhasil diunduh.` }, { quoted: msg });
                     }
                 }
             } catch (err) {
-                console.error("Error Fitur IG:", err.message);
-                sock.sendMessage(from, { text: `❌ Media IG gagal diekstrak.\nAPI Server sedang sibuk, silakan coba beberapa saat lagi.` });
+                console.error("Error IG:", err);
+                sock.sendMessage(from, { text: `❌ Gagal mengekstrak media. API Server sedang sibuk.` });
             }
-            break;
+            break;                                                               }
         }
       }
   }
