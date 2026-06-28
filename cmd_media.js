@@ -70,13 +70,12 @@ export async function handleMedia(sock, msg, from, sender, cmd, args, prefix) {
             break;
         }
 
-         case 'hd': case 'remini': {
+          case 'hd': case 'remini': {
             const qMsg = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
             const isImage = msg.message?.imageMessage || (qMsg && qMsg.imageMessage);
             
             if (!isImage) return sock.sendMessage(from, { text: `❌ Kirim foto dengan caption ${prefix}hd atau balas foto yang sudah ada dengan perintah ${prefix}hd` });
-            
-            await sock.sendMessage(from, { text: `⏳ *Memproses Gambar HD...*\n_Sistem sedang mengeksekusi server prioritas utama._` });
+            await sock.sendMessage(from, { text: `⏳ *Memproses Gambar HD...*\n_Sistem sedang mengeksekusi prioritas utama._` }, { quoted: msg });
             
             try {
                 const mediaMsg = msg.message?.imageMessage ? msg.message.imageMessage : qMsg.imageMessage;
@@ -87,20 +86,19 @@ export async function handleMedia(sock, msg, from, sender, cmd, args, prefix) {
                 let form = new FormData();
                 form.append('image', buffer, { filename: 'image.jpg' });
                 
-                // Endpoint API Remini AI (Menggunakan Axios ES Module)
                 let res = await axios.post('https://api.ryzendesu.vip/api/ai/remini', form, {
                     headers: { ...form.getHeaders() },
                     responseType: 'arraybuffer'
                 });
                 
                 if (res.data) {
-                    await sock.sendMessage(from, { image: res.data, caption: `✨ *Selesai! Resolusi gambar berhasil ditingkatkan.*` });
+                    await sock.sendMessage(from, { image: res.data, caption: `✨ *Selesai! Resolusi gambar berhasil ditingkatkan.*` }, { quoted: msg });
                 } else {
                     throw new Error("Respon API Kosong");
                 }
             } catch (err) {
-                console.error("Error Fitur HD:", err.message);
-                sock.sendMessage(from, { text: `❌ Gagal memproses gambar HD.\nSeluruh server AI sedang sibuk atau ada masalah jaringan.` });
+                console.error("Error HD:", err);
+                sock.sendMessage(from, { text: `❌ Gagal memproses gambar HD. Seluruh server AI sedang sibuk.` });
             }
             break;
         }
@@ -157,40 +155,26 @@ export async function handleMedia(sock, msg, from, sender, cmd, args, prefix) {
             break;
         }
 
-        case 'ytmp4': case 'ytmp4_360': case 'ytmp4_720': case 'ytmp4_1080': {
-            if(!args[0]) return sock.sendMessage(from, {text: `❌ Format: ${prefix}ytmp4 [Link YouTube]`});
-            if (cmd === 'ytmp4') {
-                return sock.sendMessage(from, {text: `🎥 *YOUTUBE MP4* 🎥\nPilih kualitas:\n1️⃣ 360p\n2️⃣ 720p\n3️⃣ 1080p\n\n_Balas dengan angka 1, 2, atau 3_\n\n(URL_A: ${args[0]})`});
-            }
-            await sock.sendMessage(from, { text: "⏳ *Mendownload Video YouTube...*" });
+        case 'ytmp4': case 'ytmp3': {
+            if (!args[0]) return sock.sendMessage(from, { text: `❌ Format: ${prefix}${cmd} [URL YouTube]` });
+            await sock.sendMessage(from, { text: `⏳ *Memproses media YouTube...*` }, { quoted: msg });
             
-            let vidUrl = await fetchDownloadUrl('ytmp4', args[0]);
-            if (!vidUrl) return sock.sendMessage(from, { text: `❌ *Gagal mengunduh YT MP4.* Server down.` });
-
             try {
-                let buff = await fetchMediaBuffer(vidUrl);
-                await sock.sendMessage(from, { video: buff, caption: `🎥 *YOUTUBE MP4 Selesai.*`, mimetype: 'video/mp4' });
-            } catch(e) {
-                sock.sendMessage(from, { text: `❌ *Gagal mengirim video YT.* Ukuran file mungkin melebihi batas 100MB WhatsApp.` });
+                let type = cmd === 'ytmp4' ? 'ytmp4' : 'ytmp3';
+                let res = await fetch(`https://api.ryzendesu.vip/api/downloader/${type}?url=${encodeURIComponent(args[0])}`);
+                let json = await res.json();
+                
+                if (!json || !json.url) return sock.sendMessage(from, { text: `❌ Gagal mengekstrak tautan YouTube.` });
+                
+                if (cmd === 'ytmp4') {
+                    await sock.sendMessage(from, { video: { url: json.url }, caption: `🎥 *YOUTUBE MP4*\n\n✅ Berhasil diunduh.` }, { quoted: msg });
+                } else {
+                    await sock.sendMessage(from, { audio: { url: json.url }, mimetype: 'audio/mp4' }, { quoted: msg });
+                }
+            } catch (err) {
+                console.error("Error YT:", err);
+                sock.sendMessage(from, { text: `❌ Terjadi kesalahan pada server YouTube Downloader.` });
             }
-            break;
-        }
-
-        case 'ytmp3': case 'ytmp3_128': case 'ytmp3_320': {
-            if(!args[0]) return sock.sendMessage(from, {text: `❌ Format: ${prefix}ytmp3 [Link YouTube]`});
-            if (cmd === 'ytmp3') {
-                return sock.sendMessage(from, {text: `🎧 *YOUTUBE MP3* 🎧\nPilih kualitas:\n1️⃣ 128kbps\n2️⃣ 320kbps\n\n_Balas dengan angka 1 atau 2_\n\n(URL_A: ${args[0]})`});
-            }
-            await sock.sendMessage(from, { text: "⏳ *Mendownload Audio YouTube...*" });
-            
-            let audUrl = await fetchDownloadUrl('ytmp3', args[0]);
-            if (!audUrl) return sock.sendMessage(from, { text: `❌ *Link audio tidak tersedia dari server.*` });
-
-            try {
-                let buff = await fetchMediaBuffer(audUrl);
-                await sock.sendMessage(from, { audio: buff, mimetype: 'audio/mpeg', ptt: false });
-                await sock.sendMessage(from, { document: buff, mimetype: 'audio/mpeg', fileName: `RyouMada_Audio.mp3`, caption: `🎧 Dokumen audio.` });
-            } catch(e) { sock.sendMessage(from, { text: "❌ *Gagal mengirim file audio ke WhatsApp.*" }); }
             break;
         }
 
